@@ -1,0 +1,26 @@
+{
+  "SchemaVersion": 1,
+  "Name": "service-template",
+  "Version": "v1.0.0",
+  "Profile": "code",
+  "Source": {
+    "Repository": "csoc-foundation/csoc-monitor",
+    "Commit": "5b4d9894fe76faca8c5c4a4a4f9e0ac0564c5b3a"
+  },
+  "DeploymentEnabled": false,
+  "RequiredFiles": [
+    ".editorconfig",
+    ".gitignore",
+    ".github/dependabot.yml",
+    ".github/workflows/validate.yml",
+    "README.md",
+    "Test-ServiceTemplate.ps1",
+    "infra/account.hcl",
+    "infra/root.hcl",
+    "infra/dev/env.hcl",
+    "infra/dev/terragrunt.stack.hcl",
+    "infra/prd/env.hcl",
+    "infra/prd/terragrunt.stack.hcl",
+    "infra/catalog/units/README.md"
+  ]
+}

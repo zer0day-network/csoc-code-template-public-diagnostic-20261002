@@ -1,0 +1,64 @@
+name: Validate service baseline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned validation tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Repository PSGallery -TrustRepository -Quiet
+          $ToolDirectory = Join-Path $env:RUNNER_TEMP 'service-template-tools'
+          New-Item -ItemType Directory -Path $ToolDirectory -Force | Out-Null
+          gh release download v1.12.3 --repo opentofu/opentofu --pattern tofu_1.12.3_linux_amd64.tar.gz --dir $ToolDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'OpenTofu download failed.' }
+          $Archive = Join-Path $ToolDirectory 'tofu_1.12.3_linux_amd64.tar.gz'
+          $ExpectedHash = 'f87d45408dcbb963ddbe10b2f75e55b3495310556e05c35765dfd5913551f182'
+          if ((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash -ine $ExpectedHash) { throw 'OpenTofu checksum mismatch.' }
+          tar -xzf $Archive -C $ToolDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'OpenTofu extraction failed.' }
+          python3 -m venv (Join-Path $ToolDirectory 'venv')
+          if ($LASTEXITCODE -ne 0) { throw 'Validation environment creation failed.' }
+          & (Join-Path $ToolDirectory 'venv/bin/python') -m pip install --disable-pip-version-check 'zizmor==1.30.1'
+          if ($LASTEXITCODE -ne 0) { throw 'zizmor installation failed.' }
+
+      - name: Validate template and HCL
+        run: ./Test-ServiceTemplate.ps1 -TofuPath (Join-Path $env:RUNNER_TEMP 'service-template-tools/tofu')
+
+      - name: Analyze PowerShell
+        run: |
+          $Findings = @(Invoke-ScriptAnalyzer -Path ./Test-ServiceTemplate.ps1)
+          if ($Findings.Count) {
+            $Findings | Format-List
+            throw 'PowerShell analysis failed.'
+          }
+
+      - name: Analyze GitHub Actions
+        run: |
+          & (Join-Path $env:RUNNER_TEMP 'service-template-tools/venv/bin/zizmor') --offline --no-progress --strict-collection .github
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Actions security analysis failed.' }
